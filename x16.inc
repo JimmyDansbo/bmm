@@ -259,6 +259,7 @@ X16_ROMBank_BASLoad	= 15
 ; Banked addresses and sizes
 X16_RAM_Window		= $A000
 X16_RAM_WindowSize	= $2000
+X16_RAM_WindowEnd	= $C000
 X16_ROM_Window		= $C000
 X16_ROM_WindowSize	= $4000
 

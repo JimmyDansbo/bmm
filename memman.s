@@ -2,22 +2,24 @@
 SKIPIMPORT=1
 .include "memman.inc"
 
-.import __LOWRAM_SIZE__, __LOWRAM_SIZE__
-.export mm_init, mm_set_isr, mm_clear_isr, mm_alloc, mm_remaining, mm_free, mm_get_next_handle
-.export mm_set_next_handle
+.import __LOWRAM_SIZE__
+.export mm_init, mm_set_isr, mm_clear_isr, mm_alloc, mm_remaining, mm_free, mm_init_bank
+.export mm_update_zp, mm_get_ptr
 
 .segment "MEMMANBSS"
 lowram_addr:	.res	2
 orig_isr:	.res	2
-handle_id:	.res	2
 scratch:	.res	6
 
-REM_SPACE=$A000
-FREE_ADDR=$A002
+FREE_ADDR	= $A000
+HANDLE_CNT	= $A002
+first_item	= $A003
 
-_isr_bank=6
-_isr_addr=10
-_isr_orig=16
+; Offsets from low-ram start address
+_isr_bank	= 6
+_isr_addr	= 10
+_isr_orig	= 16
+
 
 .segment "MEMMAN"
 ; Internal jump table into lowram functions
@@ -40,6 +42,15 @@ bank_cpy:
 ;=============================================================================
 ;-----------------------------------------------------------------------------
 ;*****************************************************************************
+.proc mm_get_ptr: near
+	rts
+.endproc
+
+;*****************************************************************************
+; Free the block of memory at pointer and move any following used memory
+;=============================================================================
+;-----------------------------------------------------------------------------
+;*****************************************************************************
 .proc mm_free: near
 	rts
 .endproc
@@ -53,93 +64,130 @@ bank_cpy:
 ; Preserves:	.X
 ;*****************************************************************************
 .proc mm_remaining: near
-	lda	#<REM_SPACE	; Set address $A000 in ZP pointer
-	ldy	#>REM_SPACE
+	lda	#<FREE_ADDR	; Set address $A000 in ZP pointer
+	ldy	#>FREE_ADDR
 	jsr	updzp1
-	jmp	lday_bank	; Read available memory from bank
+	jsr	lday_bank	; Read next free address from bank
+	sta	scratch
+	sty	scratch+1
+	; Subtract free address from $C000
+	lda	#<X16_RAM_WindowEnd	; low-byte
+	sec
+	sbc	scratch
+	pha
+	lda	#>X16_RAM_WindowEnd	; high-byte
+	sbc	scratch+1
+	tay
+	pla
+	rts
 .endproc
 
 ;*****************************************************************************
 ; Allocate the requested number of bytes if they are available
 ;=============================================================================
-; Inputs:	.A = number of bytes
+; Inputs:	.A & Y = number of bytes (low/high)
 ; 		.X = bank
-; Output:	.A & .Y = low- and high-byte of address of allocated memory
-;		.C = set if memory is available, otherwise clear
+; Output:	.A & .Y = Handle ID (bank/cnt), carry clear on success
+;		.C = set on error (.A contains error code)
 ;-----------------------------------------------------------------------------
 ; Preserves:	.X
 ; Uses:		ZP pointer
 ;*****************************************************************************
 .proc mm_alloc: near
-	; Ensure that requested amount is more than 0 bytes
-	cmp	#0
-	bcs	:+
-	clc		; Return carry clear if requested amount is 0
-	rts
-:	; Ensure that requested amount is less than 255 bytes
-	cmp	#$FF
+newfree=scratch+0
+requested=scratch+2
+needed=scratch+4
+	sta	requested+0
+	sty	requested+1
+	; Ensure it is not a request for 0 bytes
+	ora	requested+1
 	bne	:+
-	clc
-	rts
-:	inc	; Allocate an extra byte for header/size information
-	jsr	check_space
-	bcc	end
-	; Memory is available here. Calculate the new free space and pointer
-	dec	; Save only the amount the user has requested
-	pha	; Save the number of bytes being requested
-	; Set ZP pointer to FREE_ADDR
-	lda	#<FREE_ADDR
-	ldy	#>FREE_ADDR
-	jsr	updzp1
-	jsr	lday_bank	; Read next available address from bank
-	jsr	updzp1
-	sta	scratch
-	sty	scratch+1
-
-	pla			; Restore number of bytes being requested (+1)
-	ldy	#0
-	jsr	sta_bank	; Store as header of allocated memory
-
-	inc	; We are still allocating 1 byte more than requested for the header
-	; Save address on stack as this needs to be returned to caller
-	ldy	scratch
-	phy			; low-byte
-	ldy	scratch+1
-	phy			; high-byte
-
-	clc			; Calculate new next available address
-	adc	scratch
-	sta	scratch
-	lda	#0
-	adc	scratch+1
-	sta	scratch+1
-	; Calculate new free space after allocation of memory
-	lda	#<X16_ROM_Window
+	lda	#MM_ERR_ZERO
 	sec
-	sbc	scratch
-	pha
-	lda	#>X16_ROM_Window
-	sbc	scratch+1
-	tay
-	lda	#>REM_SPACE
-	jsr	zerozp1l
-	jsr	updzp1h
-	pla
-	jsr	stay_bank	; Store new free space
+	rts
+:	; Calculate space needed including 4 byte header
+	clc
+	lda	requested
+	adc	#4
+	sta	needed
+	lda	requested+1
+	adc	#0
+	sta	needed+1
+	; Check if available space is larger than requested space
+	jsr	mm_remaining	; Remaining space in .A/.Y
+	sec
+	sbc	needed
+	tya
+	sbc	needed+1
+	bcs	:+
+	lda	#MM_ERR_NOSPACE
+	sec
+	rts
+:	; --- Here we know that the memory is available
+	; Update bank header with address of next available address
 	lda	#<FREE_ADDR
 	ldy	#>FREE_ADDR
 	jsr	updzp1
-	lda	scratch
-	ldy	scratch+1
-	jsr	stay_bank	; Store pointer to next available space
-	; Load start of allocated memory back into .A & .Y, add 1 to skip header
-	ply
-	pla
+	; Read handle counter from bank header
+	ldy	#2
+	jsr	lda_bank
+	sta	scratch+2
+	; If next handle counter value is 0, we have run out of handles
 	inc
 	bne	:+
-	iny
-:	sec
-end:	rts
+	lda	#MM_ERR_NOHANDLE
+	sec
+	rts
+:	jsr	sta_bank	; Save new handle counter value
+	jsr	lday_bank	; Free address in .A/.Y
+	sta	scratch		; Save in scratch for later use
+	sty	scratch+1
+	; Calculate new free address
+	clc
+	adc	needed
+	pha
+	tya
+	adc	needed+1
+	tay
+	pla
+	jsr	stay_bank	; Store in RAM bank header
+	; Save new free address on stack
+	pha
+	phy
+	; Set ZP to point to allocated memory block
+	lda	scratch
+	ldy	scratch+1
+	jsr	updzp1
+	; Write next available address to memory block header
+	ply
+	pla
+	jsr	stay_bank
+	; Write handle to memory block header
+	ldy	#2
+	lda	scratch+2
+	jsr	sta_bank
+	; Calculate checksum of header
+	jsr	lday_bank
+	sty	scratch
+	eor	scratch
+	sta	scratch
+	ldy	#2
+	jsr	lda_bank
+	eor	scratch
+	eor	#$AA
+	ldy	#3
+	jsr	sta_bank
+	; Write zero's as pointer in next memory block
+	jsr	lday_bank
+	jsr	updzp1
+	lda	#0
+	ldy	#0
+	jsr	stay_bank
+	; Combine handle_id from bank and handle counter
+	txa
+	ldy	scratch+2
+	clc
+	rts
 .endproc
 
 ;*****************************************************************************
@@ -178,32 +226,80 @@ end:	rts
 	; Store low-byte of address for banked ISR
 	pla
 	ldy	#_isr_addr
-	jsr	storzp1y
+	jsr	sta_bank
 	; Store high-byte of address for banked ISR
 	iny
 	pla	; Load high-byte of ISR from stack
-	jsr	storzp1y
+	jsr	sta_bank
 	; Store bank# of banked ISR
 	ldy	#_isr_bank
 	txa
-	jsr	storzp1y
+	jsr	sta_bank
 	; Save original interrupt vector
 	ldy	#_isr_orig
 	lda	X16_Vector_IRQ
 	sta	orig_isr
-	jsr	storzp1y
+	jsr	sta_bank
 	iny
 	lda	X16_Vector_IRQ+1
 	sta	orig_isr+1
-	jsr	storzp1y
+	jsr	sta_bank
 	; Install new interrupt vector
+	clc
 	sei	; Disable interrupts
-	lda	lowram_addr
+	lda	lowram_addr	; Two first bytes of lowram is scratch storage
+	adc	#2
 	sta	X16_Vector_IRQ
 	lda	lowram_addr+1
+	adc	#0
 	sta	X16_Vector_IRQ+1
 	cli	; Enable interrupts
 	rts
+.endproc
+
+;*****************************************************************************
+; Update the memory bank header with next free address and zero out handle cnt
+;=============================================================================
+; Inputs:	.A & .Y = low- and high-byte of next free address
+;			  $A000 if it's an empty bank
+;		.X = Ram bank
+;-----------------------------------------------------------------------------
+; Preserves:	.X
+;*****************************************************************************
+.proc mm_init_bank: near
+	phy
+	pha
+	lda	#<FREE_ADDR
+	ldy	#>FREE_ADDR
+	jsr	updzp1
+	; Set handle counter to 0
+	ldy	#2
+	lda	#0
+	jsr	sta_bank
+	; Write free address to bank header
+	pla			; low-byte of free address
+	ldy	#0		; Store as low-byte of next free in bank header
+	jsr	sta_bank	
+	ldy	#3		; Store as lowb-yte of first item in bank header
+	jsr	sta_bank
+	pla			; high-byte of free address
+	ldy	#1		; Store as high-byte of next free in bank header
+	jsr	sta_bank
+	ldy	#4		; Store as high-byte of first item in bank header
+	jsr	sta_bank
+	; Check if address is $A000
+	cmp	#>FREE_ADDR
+	bne	:+
+	dey
+	jsr	lda_bank
+	cmp	#<FREE_ADDR
+	bne	:+
+	lda	#$03
+	ldy	#$01
+	jsr	sta_bank
+	ldy	#$04
+	jmp	sta_bank
+:	rts
 .endproc
 
 ;*****************************************************************************
@@ -212,59 +308,26 @@ end:	rts
 ;=============================================================================
 ; Inputs:	.A = First ZP address to use as pointer
 ;		.Y = Second ZP address to use as pointer
+;		.X = First RAM bank to allocate memory in
 ;		Content of first ZP pointer should be the lowram address
+;		Content of second ZP pointer should be first free address
+;		  in RAM bank. $A000 if it is an empty RAM bank.
+;		  Any RAM bank used by the library must reserve the first 3
+;		  bytes of the RAM Bank for the library. $A000,$A001&$A002 
 ;-----------------------------------------------------------------------------
+; Preserves:	.X
 ;*****************************************************************************
 .proc mm_init: near
-	; Update ZP pointers
-	sta	@zp0+1
-	sta	readzp1+1
-	sta	readzp1y+1
-	sta	storzp1+1
-	sta	storzp1y+1
-	sta	updzp1+1
-	sty	updzp2+1
-	sta	inczp1+1
-	sty	inczp2+1
-	sta	zerozp1l+1
-	sty	zerozp2l+1
-	sta	zp01+1
-	sta	zp02+1
-	sta	zp03+1
-	sta	zp04+1
-	sta	zp05+1
-	sta	zp06+1
-	sta	zp07+1
-	sta	zp08+1
-	sta	zp09+1
-	sta	zp10+1
-	sta	zp11+1
-	sty	zp20+1
-	sty	zp21+1
-	inc
-	iny
-	sta	@zp1+1
-	sta	updzp1+3
-	sty	updzp2+3
-	sta	updzp1h+1
-	sty	updzp2h+1
-	sta	inczp1+5
-	sty	inczp2+5
-	sta	inczp1h+1
-	sty	inczp2h+1
-	sta	zpp1+1
-	sty	zpp2+1
-	
+	jsr	mm_update_zp
 	; Store low-ram addresses in library and low-ram mem copy function
-@zp0:	lda	$42
+zp0:	lda	$42
 	sta	lowram_addr
-	sta	lsl0+1
+	sta	lsl0+1		; low-ram scratch address low-byte
 	sta	lsl1+1
-@zp1:	lda	$42+1
+zp1:	lda	$42+1
 	sta	lowram_addr+1
 	sta	lsl0+2
 	sta	lsl1+2
-
 	lda	lowram_addr
 	inc
 	sta	lsh0+1
@@ -275,13 +338,10 @@ end:	rts
 :	sta	lsh0+2
 	sta	lsh1+2
 
-	; Reset handle_id
-	stz	handle_id
-
 	; Copy routines to lowram
 	ldy	#(_end_lowram-_low_scratch-1)	; Size of lowram segment
 loop:	lda	_low_scratch,y
-	jsr	storzp1y
+zp2:	sta	($42),y
 	dey
 	bne	loop
 	; Update jumptable
@@ -332,89 +392,61 @@ loop:	lda	_low_scratch,y
 	lda	#0
 	adc	lowram_addr+1
 	sta	bank_cpy+2
-	rts
+	; Initialize memory bank 
+zp3:	lda	$42+0
+zp4:	ldy	$42+1
+	jmp	mm_init_bank
 .endproc
 
 ;*****************************************************************************
-; Get the handle id that will be given out next time a block of memory is
-; allocated. This can be used to save the handle id during a re-initialization
-; of the memory manager.
+; Update ZP pointers in the library
 ;=============================================================================
-; Outputs:	.A & .Y = low- and high-byte of handle id
+; Inputs:	.A = First ZP address to use as pointer
+;		.Y = Second ZP address to use as pointer
 ;-----------------------------------------------------------------------------
-; Preserves:	All but .A & .Y
+; Uses:		.A & .Y
 ;*****************************************************************************
-.proc mm_get_next_handle: near
-	lda	handle_id+0
-	ldy	handle_id+1
+.proc mm_update_zp: near
+	; Update ZP pointers
+	sta	mm_init::zp0+1
+	sta	mm_init::zp2+1
+	sty	mm_init::zp3+1
+	sta	updzp1+1
+	sty	updzp2+1
+	sta	inczp1+1
+	sty	inczp2+1
+	sta	zerozp1l+1
+	sty	zerozp2l+1
+	sta	zp01+1
+	sta	zp02+1
+	sta	zp03+1
+	sta	zp04+1
+	sta	zp05+1
+	sta	zp06+1
+	sta	zp07+1
+	sta	zp08+1
+	sta	zp09+1
+	sta	zp10+1
+	sta	zp11+1
+	sty	zp20+1
+	sty	zp21+1
+	inc
+	iny
+	sta	mm_init::zp1+1
+	sty	mm_init::zp4+1
+	sta	updzp1+3
+	sty	updzp2+3
+	sta	updzp1h+1
+	sty	updzp2h+1
+	sta	inczp1+5
+	sty	inczp2+5
+	sta	inczp1h+1
+	sty	inczp2h+1
+	sta	zpp1+1
+	sty	zpp2+1
 	rts
 .endproc
 
-;*****************************************************************************
-; Tell the memory manager which handle id to give out next time a block of
-; memory is allocated. This is useful if the array has been re-initialized
-; to use another ZP pointer as that also resets the next handle id to 0
-;=============================================================================
-; Inputs:	.A & .Y = low- and high-byte of handle id
-;-----------------------------------------------------------------------------
-; Preserves:	All
-;*****************************************************************************
-.proc mm_set_next_handle: near
-	sta	handle_id+0
-	sty	handle_id+1
-	rts
-.endproc
-
-;*****************************************************************************
-; Check if requested amount of space is available in the specified bank
-; Maximum request size is 255 bytes
-;=============================================================================
-; Inputs:	.A = number of bytes 
-;		.X = bank
-; Output:	Carry set if the memory is available, otherwise clear
-;-----------------------------------------------------------------------------
-; Uses:		ZP pointer
-; Preserves:	.A & .X
-;*****************************************************************************
-.proc check_space: near
-	pha			; Save the number of bytes being requested
-	lda	#>REM_SPACE	; Set address $A000 in ZP pointer
-	jsr	zerozp1l
-	jsr	updzp1h
-	jsr	lday_bank	; Read available memory from bank
-	sta	scratch
-	sty	scratch+1
-	pla			; Restore bytes requested
-	ldy	scratch+1	; Check high-byte
-	bne	good
-	; Here, we know that high-byte is 0
-	pha			; Save on stack again
-	sta	scratch+1	; Store bytes requested to scratch and load
-	lda	scratch		; available bytes into A for CMP
-	cmp	scratch+1
-	pla			; Restore bytes requested
-	rts	; Exit function with C set if mem avail otherwise clear
-good:	sec
-	rts
-.endproc
-
-
-.proc readzp1: near	; lda (zp1)
-	lda	($42)
-	rts
-.endproc
-.proc readzp1y: near	; lda (zp1),y
-	lda	($42),y
-	rts
-.endproc
-.proc storzp1: near	; sta (zp1)
-	sta	($42)
-	rts
-.endproc
-.proc storzp1y: near	; sta (zp1),y
-	sta	($42),y
-	rts
-.endproc
 .proc updzp1: near	; sta zp1+0, sty zp1+1
 	sta	$42+0
 	sty	$42+1
