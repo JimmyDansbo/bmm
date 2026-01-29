@@ -64,6 +64,13 @@ bank_cpy:
 	jsr	lday_bank
 	sta	scratch+2	; This is going to be the from-ptr
 	sty	scratch+3
+	; Calculate the size of the memory area being freed
+	sec
+	sbc	scratch
+	sta	scratch+4
+	tya
+	sbc	scratch+1
+	sta	scratch+5
 
 	lda	#<FREE_ADDR
 	ldy	#>FREE_ADDR
@@ -92,18 +99,15 @@ bank_cpy:
 	jsr	updzp1
 	; Read first memory block address
 	jsr	lday_bank
-	; Check if the address is zero
-	pha
-	sty	scratch+1
-	ora	scratch+1
+	; Check if high-byte of address is zero
+	cpy	#0
 	bne	:+
-	pla
+	bne	:+
 	lda	#MM_ERR_HANDLE_NOTFOUND
 	sec
 	rts
 	; If it is not zero, we can check the memory block for handle id
-:	pla
-	sta	scratch+2
+:	sta	scratch+2
 	sty	scratch+3
 	; Check if current handle id matches
 loop:	lda	scratch+2
@@ -111,20 +115,16 @@ loop:	lda	scratch+2
 	jsr	updzp1	; Set ZP to point to memory block
 	; Read next address
 	jsr	lday_bank
-	; Check if the address is zero
-	pha
-	sty	scratch+1
-	ora	scratch+1
+	; Check if the high-byte of address is zero
+	cpy	#0
 	bne	:+
-	pla
 	lda	#MM_ERR_HANDLE_NOTFOUND
 	sec
 	rts
 	; Store next address for loop iteration
-:	pla
-	sta	scratch+2
+:	sta	scratch+2
 	sty	scratch+3
-	jsr	check_header
+	jsr	check_header	; Uses scratch+5
 	bcc	:+
 	lda	#MM_ERR_CORRUPT_HDR
 	rts
@@ -367,30 +367,25 @@ needed=scratch+4
 	ldy	#2
 	lda	#0
 	jsr	sta_bank
-	; Write free address to bank header
+	; If address is $A000, write $A004, otherwise free address to bank header
 	pla			; low-byte of free address
-	ldy	#0		; Store as low-byte of next free in bank header
-	jsr	sta_bank	
-	ldy	#3		; Store as lowb-yte of first item in bank header
-	jsr	sta_bank
+	; If low-byte is not 0, just write the address ot bank header
+	bne	:+
 	pla			; high-byte of free address
-	ldy	#1		; Store as high-byte of next free in bank header
+	pha			; Save on stack again
+	cmp	#>FREE_ADDR	; Here we know that low-byte was 0 chec if high-byte is $A0
+	bne	:+		; If not, just write the address to bank header
+	lda	#MEM_HDR_SIZE	; If it was zero, set low-byte to skip bank header
+	; Write free address to bank header
+:	ldy	#0
 	jsr	sta_bank
-	ldy	#4		; Store as high-byte of first item in bank header
+	ldy	#3
 	jsr	sta_bank
-	; Check if address is $A000
-	cmp	#>FREE_ADDR
-	bne	:+
-	dey
-	jsr	lda_bank
-	cmp	#<FREE_ADDR
-	bne	:+
-	lda	#$03
-	ldy	#$01
+	pla
+	ldy	#1
 	jsr	sta_bank
-	ldy	#$04
+	ldy	#4
 	jmp	sta_bank
-:	rts
 .endproc
 
 ;*****************************************************************************
