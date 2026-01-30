@@ -2,6 +2,8 @@
 SKIPIMPORT=1
 .include "memman.inc"
 
+MEMMAN_VERSION	= $0008
+
 .import __LOWRAM_SIZE__
 .export mm_init, mm_set_isr, mm_clear_isr, mm_alloc, mm_remaining, mm_free, mm_init_bank
 .export mm_update_zp, mm_get_ptr
