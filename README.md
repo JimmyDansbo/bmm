@@ -11,7 +11,7 @@ Version 0.8
 * [Memory Bank Header](#memory-bank-header)
 * [Memory Area Header](#memory-area-header)
 * [Using in your project](#using-in-your-project)
-* [Error codes]
+* [Error codes](#error-codes)
 * [Functions](#functions)  
 	*[mm_init](#function-name-mm_init)  
 	*[mm_init_bank](#function-name-mm_init_bank)  
@@ -22,6 +22,13 @@ Version 0.8
 	*[mm_free](#function-name-mm_free)  
 	*[mm_set_isr](#function-name-mm_set_isr)  
 	*[mm_clear_isr](#function-name-mm_clear_isr)
+* [Lowram Functions](#lowram-functions)  
+	*[mm_lda_bank](#function-name-mm_lda_bank)  
+	*[mm_lday_bank](#function-name-mm_lday_bank)  
+	*[mm_ldyxa_bank](#function-name-mm_ldyxa_bank)  
+	*[mm_sta_bank](#function-name-mm_sta_bank)  
+	*[mm_stay_bank](#function-name-mm_stay_bank)  
+	*[mm_bank_copy](#function-name-mm_bank_copy)
 
 ## Overview
 
@@ -200,3 +207,118 @@ Communication registers: none
 Uses: A
 
 **Description** Remove the banked interrupt service routine and restore the original interrupt handler.
+## Lowram functions
+There are several lowram functions made available by the library. They are located in the memory area that was made available to the library at initialization.
+
+To call a lowram function, the function offset is simply added to the start address of the lowram area.
+
+```
+	jsr	lowram+MM_LDA_BANK_OFS
+```
+### Function name: mm_lda_bank
+Purpose: lda from banked address  
+Communication registers: X & Y  
+Depends: zp1 pointer
+Preserves: X, Y and RAM bank  
+Offset: $12  
+Offset constant: `MM_LDA_BANK_OFFS`
+
+**Description** Reads a single byte from banked memory specified by first ZeroPage pointer into register A
+| Inputs | Purpose |
+|--------|---------|
+| zp1 | ZeroPage pointer to address to read from |
+| X | RAM bank to read from |
+| Y | Offset from pointer to read from |
+
+| Output | Description |
+|--------|-------------|
+| A | Value read from banked memory |
+
+### Function name: mm_lday_bank
+Purpose: lda & ldy from banked address  
+Communication registers: A, Y & X  
+Depends: zp1 pointer  
+Preserves: X & RAM bank before call  
+Offset: $21  
+Offset constant: `MM_LDAY_BANK_OFFS`
+
+**Description** Reads two bytes from banked memory specified by first ZeroPage pointer into registers A & Y
+| Inputs | Purpose |
+|--------|---------|
+| zp1 | ZeroPage pointer to address to read from |
+| X | RAM bank to read from |
+
+| Output | Description |
+|--------|-------------|
+| A | low-byte of value read from banked memory |
+| Y | high-byte of value read from banked memory |
+
+### Function name: mm_ldyxa_bank
+Purpose: ldy, ldx & lda from banked address  
+Communication registers: A, Y & X  
+Depends: zp1 pointer  
+Preserves: RAM bank before call  
+Offset: $33  
+Offset constant: `MM_LDYXA_BANK_OFFS`
+
+**Description** Reads three bytes from banked memory specified by first ZeroPage pointer into registers Y, X & A
+| Inputs | Purpose |
+|--------|---------|
+| zp1 | ZeroPage pointer to address to read from |
+| X | RAM bank to read from
+
+| Output | Description |
+|--------|-------------|
+| Y | low-byte of value read from banked memory |
+| X | mid-byte of value read from banked memory |
+| A | high-byte of value read from banked memory |
+
+### Function name: mm_sta_bank
+Purpose: sta to banked address  
+Communication registers: A, X, Y
+Depends: zp1 pointer
+Preserves: A, X, Y and the RAM bank before call  
+Offset: $48  
+Offset constant: `MM_STA_BANK_OFFS`
+
+**Description** Store a value from register A to banked memory pointed to by first ZeroPage pointer.
+| Inputs | Purpose |
+|--------|---------|
+| zp1 | ZeroPage pointer to address to write to |
+| X | RAM bank to write to |
+| Y | Offset from pointer to write to |
+| A | Value to write |
+
+### Function name: mm_stay_bank
+Purpose: sta & sty to banked address  
+Communication registers: A, X & Y  
+Depends: zp1 pointer  
+Preserves: A, X, Y & RAM bank before call
+Offset: $56  
+Offset constant: `MM_STAY_BANK_OFFS`
+
+**Description** Store two bytes to banked memory specified by first ZeroPage pointer from registers A & Y
+| Inputs | Purpose |
+|--------|---------|
+| zp1 | ZeroPage pointer to address to write to |
+| X | RAM bank to write to |
+| A | low-byte to write to banked address |
+| Y | high-byte to write to banked address |
+### Function name: mm_bank_copy
+Purpose: Copy memory withint banks  
+Communication registers: A & X  
+Depends: zp1, zp2 pointers and 2 first bytes of lowram area  
+Preserves: X & RAM bank
+Offset: $6E  
+Offset constant: `MM_BANK_COPY_OFFS`
+
+**Description** Copies memory to- and from any RAM bank and conventional RAM. The funciton is NOT aware of IO ports such as VERA data ports.  
+The two first bytes of the lowram area provided to the library must be filled with the amount of bytes that needs to be copied prior to calling this function.  
+If the source- and destination RAM bank are equal, the RAM bank will be set once before copying data. This enable to function to copy within the same RAM bank or to copy to- and from conventional memory and banked memory.
+| Inputs | Purpose |
+|--------|---------|
+| zp1 | Fist ZeroPage Pointer is source address |
+| zp2 | Second ZeroPage Pointer is destination address |
+| lowram | The two first bytes of lowram is the number of bytes to copy |
+| A | Source RAM bank |
+| X | Destination RAM bank |
