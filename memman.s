@@ -12,10 +12,11 @@ orig_isr:	.res	2
 scratch:	.res	6
 
 FREE_ADDR	= $A000
-HANDLE_CNT	= $A002
-FIRST_ITEM	= $A003
+FIRST_ITEM	= $A002
+ID_BITMAP	= $A004
 
 MEM_HDR_SIZE	= 4
+BANK_HDR_SIZE	= 36
 
 ; Offsets from low-ram start address
 _isr_bank	= 6
@@ -39,15 +40,19 @@ bank_cpy:
 	jmp	$0000
 
 ;*****************************************************************************
-; Free the block of memory at pointer and move any following used memory
+; Free the block of memory with handle_id and move any following used memory
 ;=============================================================================
 ; Inputs:	.A & .Y = handle_id (bank/cnt)
 ;-----------------------------------------------------------------------------
+; Uses:		.A, .Y, .X, both ZP pointers & scratch areas
 ;*****************************************************************************
 .proc mm_free: near
+	phy			; Save cnt-part of handle_id
 	; Find pointer for handle_id or exit with error
 	jsr	mm_get_ptr
 	bcc	:+
+	ply			; Cleanup stack
+	sec
 	rts
 	; Subtract the 4 byte header from the pointer
 :	sec
@@ -143,8 +148,9 @@ loop:	jsr	updzp1
 	jsr	update_checksum
 	jsr	lday_bank
 	bra	loop
-:	pla
-	rts
+:	pla			; Cleanup stack
+	pla			; Get cnt-part of handle_id
+	jmp	free_handle
 .endproc
 
 ;*****************************************************************************
@@ -281,21 +287,16 @@ needed=scratch+4
 	sec
 	rts
 :	; --- Here we know that the memory is available
+	; --- Ensure there is a handle to use
+	jsr	get_handle
+	bcc	:+
+	lda	#MM_ERR_NOHANDLE
+	rts
+:	sta	scratch+2	; Store handle for later use
 	; Update bank header with address of next available address
 	lda	#<FREE_ADDR
 	ldy	#>FREE_ADDR
 	jsr	updzp1
-	; Read handle counter from bank header
-	ldy	#2
-	jsr	lda_bank
-	sta	scratch+2
-	; If next handle counter value is 0, we have run out of handles
-	inc
-	bne	:+
-	lda	#MM_ERR_NOHANDLE
-	sec
-	rts
-:	jsr	sta_bank	; Save new handle counter value
 	jsr	lday_bank	; Free address in .A/.Y
 	sta	scratch		; Save in scratch for later use
 	sty	scratch+1
@@ -406,7 +407,7 @@ needed=scratch+4
 .endproc
 
 ;*****************************************************************************
-; Update the memory bank header with next free address and zero out handle cnt
+; Update the memory bank header with next free address and zero handle bitmap
 ;=============================================================================
 ; Inputs:	.A & .Y = low- and high-byte of next free address
 ;			  $A000 if it's an empty bank
@@ -420,28 +421,34 @@ needed=scratch+4
 	lda	#<FREE_ADDR
 	ldy	#>FREE_ADDR
 	jsr	updzp1
-	; Set handle counter to 0
-	ldy	#2
-	lda	#0
-	jsr	sta_bank
-	; If address is $A000, write $A004, otherwise free address to bank header
+	; If address is $A000, write first free address after header
 	pla			; low-byte of free address
 	; If low-byte is not 0, just write the address ot bank header
 	bne	:+
 	pla			; high-byte of free address
 	pha			; Save on stack again
-	cmp	#>FREE_ADDR	; Here we know that low-byte was 0 chec if high-byte is $A0
+	cmp	#>FREE_ADDR	; Here we know that low-byte was 0 check if high-byte is $A0
 	bne	:+		; If not, just write the address to bank header
-	lda	#MEM_HDR_SIZE	; If it was zero, set low-byte to skip bank header
+	lda	#BANK_HDR_SIZE	; If it was zero, set low-byte to skip bank header
 	; Write free address to bank header
 :	ldy	#0
 	jsr	sta_bank
-	ldy	#3
+	ldy	#2
 	jsr	sta_bank
 	pla
 	ldy	#1
 	jsr	sta_bank
-	ldy	#4
+	ldy	#3
+	jsr	sta_bank
+	; Zero out ID bitmap
+	lda	#<ID_BITMAP
+	ldy	#>ID_BITMAP
+	jsr	updzp1
+	lda	#0
+	ldy	#BANK_HDR_SIZE-4-1
+:	jsr	sta_bank
+	dey
+	bne	:-
 	jmp	sta_bank
 .endproc
 
@@ -585,6 +592,122 @@ zp4:	ldy	$42+1
 .endproc
 
 ;*****************************************************************************
+; Set a specified handle_id as free in the ID bitmap
+;=============================================================================
+; Inputs:	.A = cnt-part of handle_id
+;		.X = bank
+; Outputs:	None
+;-----------------------------------------------------------------------------
+; Uses:		.A, .Y & first ZP pointer
+; Preserves:	.X & scratch
+;*****************************************************************************
+.proc free_handle: near
+	ldy	scratch		; Save content of scratch
+	phy
+	pha			; Save handle_id
+	lsr
+	lsr
+	lsr
+	tay			; Byte index in .Y
+	pla			; Get handle_id
+	phy			; Save byte index
+	and	#%00000111	; bit index 0-7
+	tay			; .Y = bit index
+
+	lda	#1
+	cpy	#0
+	beq	bitmask_done
+bitmask_loop:
+	asl
+	dey
+	bne	bitmask_loop
+bitmask_done:
+	eor	#$FF		; Invert bitmask
+	sta	scratch		; Save bitmask
+	; Set ZP pointer
+	lda	#<ID_BITMAP
+	ldy	#>ID_BITMAP
+	jsr	updzp1
+	ply			; Get byte index
+	jsr	lda_bank
+	and	scratch		; zero the bit in the byte
+	jsr	sta_bank
+	pla			; Restore content of scratch
+	sta	scratch
+	rts
+.endproc
+
+;*****************************************************************************
+; Return an available handle_id for the current bank
+;=============================================================================
+; Inputs:	.X = bank
+; Outputs:	.A = handle_id
+;		.C clear on success, otherwise set
+;-----------------------------------------------------------------------------
+; Uses:		.A, .Y & first ZP pointer
+; Preserves	.X
+;*****************************************************************************
+.proc get_handle: near
+	lda	scratch		; Save contents of scratch
+	pha
+	lda	#<ID_BITMAP
+	ldy	#>ID_BITMAP
+	jsr	updzp1
+	ldy	#0
+byte_loop:
+	jsr	lda_bank	; Read byte from bitmap
+	cmp	#$FF		; Are all bits set?
+	bne	bit_available	; If not, there's an ID available
+	iny
+	cpy	#BANK_HDR_SIZE-4 ; Have all bytes been checked?
+	bne	byte_loop
+	pla			; No handles available
+	sta	scratch
+	sec
+	rts
+bit_available:	; Here is a byte with an available bit
+	phy			; Save byte index
+	ldy	#0		; Initialize bit index
+bit_loop:
+	lsr			; Push bit to carry
+	bcc	mark_found	; If carry clear, bit is found
+	iny
+	bra	bit_loop
+mark_found:
+	sty	scratch		; Save bit index
+	pla			; Get byte index
+	pha			; Save byte index again
+	; Calculate handle (byte index * 8) + bit index
+	asl	; * 2
+	asl	; * 4
+	asl	; * 8
+	clc
+	adc	scratch		; Add bit index
+	pha			; Save handle_id
+	; Set bit as occupied
+	lda	#1		; Set right most bit
+	cpy	#0		; Is bit index already 0?
+	beq	shift_done
+shift_loop:
+	asl			; Shift bit left
+	dey
+	bne	shift_loop
+shift_done:
+	sta	scratch		; Save bitmask
+	pla			; Get handle_id
+	ply			; Get byte index
+	pha			; Save handle_id
+	jsr	lda_bank	; Read byte from bitmap again
+	ora	scratch		; Combine with bitmask
+	jsr	sta_bank	; Save the updated byte
+	pla			; Get handle_id
+	ply			; Restore scratch
+	sty	scratch
+	clc			; Success
+	rts
+.endproc
+
+;*****************************************************************************
 ; Calculate and update the checksum of a memory block
 ;=============================================================================
 ; Inputs:	ZP1 pointing to head of memory block
@@ -635,22 +758,54 @@ zp4:	ldy	$42+1
 :	rts
 .endproc
 
-
+;*****************************************************************************
+; Update address of first ZP pointer
+;=============================================================================
+; Inputs:	.A & .Y = low- & high-byte of address
+;-----------------------------------------------------------------------------
+; Preserves:	All except first ZP pointer
+;*****************************************************************************
 .proc updzp1: near	; sta zp1+0, sty zp1+1
 	sta	$42+0
 	sty	$42+1
 	rts
 .endproc
+
+;*****************************************************************************
+; Update address of second ZP pointer
+;=============================================================================
+; Inputs:	.A & .Y = low- & high-byte of address
+;-----------------------------------------------------------------------------
+; Preserves:	All except second ZP pointer
+;*****************************************************************************
 .proc updzp2: near	; sta zp2+0, sty zp1+1
 	sta	$42+0
 	sty	$42+1
 	rts
 .endproc
+
+;*****************************************************************************
+; Get address stored in first ZP pointer
+;=============================================================================
+; Inputs:	none
+; Outputs:	.A & .Y = low- & high-byte of address
+;-----------------------------------------------------------------------------
+; Preserves:	All except .A & .Y
+;*****************************************************************************
 .proc readzp1: near	; lda zp1+0, ldy zp1+1
 	lda	$42+0
 	ldy	$42+1
 	rts
 .endproc
+
+;*****************************************************************************
+; Get address stored in second ZP pointer
+;=============================================================================
+; Inputs:	none
+; Outputs:	.A & .Y = low- & high-byte of address
+;-----------------------------------------------------------------------------
+; Preserves:	All except .A & .Y
+;*****************************************************************************
 .proc readzp2: near	; lda zp2+0, ldy zp2+1
 	lda	$42+0
 	ldy	$42+1

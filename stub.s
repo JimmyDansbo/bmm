@@ -2,16 +2,16 @@
 
 .segment "HEADER"
 free_addr:	.word $BF37
-handle_cnt:	.byte $42
 first_item:	.word $BF37
+id_bitmap:	.res 32
 
 .segment "JUMPTABLE"
-	jmp	mm_init		; $A005
-	jmp	mm_set_isr	; $A008
-	jmp	mm_clear_isr	; $A00B
-	jmp	mm_alloc	; $A00E
-	jmp	mm_remaining	; $A011
-	jmp	mm_free		; $A014
-	jmp	mm_update_zp	; $A017
-	jmp	mm_init_bank	; $A01A
-	jmp	mm_get_ptr	; $A01D
+	jmp	mm_init		; $A024
+	jmp	mm_set_isr
+	jmp	mm_clear_isr
+	jmp	mm_alloc
+	jmp	mm_remaining
+	jmp	mm_free
+	jmp	mm_update_zp
+	jmp	mm_init_bank
+	jmp	mm_get_ptr
