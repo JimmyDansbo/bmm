@@ -36,3 +36,15 @@ These 4 bytes are used for the memory area header:
 |  $02 | 1 byte | Handle ID in current bank |
 | $03 | 1 byte | Checksum of header |
 ## Using in your project
+## Functions
+### Function name: mm_init
+Purpose: Initialize Banked Memory Manager  
+Communication registers: A, Y & X
+
+**Description** Initialize the banked memory manager library, copy functions to low-ram and initialize the first memory bank for usage by the library.
+| Registers | Purpose |
+|-----------|---------|
+|    A     | First ZeroPage address to use as pointer |
+|    Y     | Second ZeroPage address to use as pointer |
+|    X     | Memory bank to initialize |
+
