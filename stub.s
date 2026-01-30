@@ -1,8 +1,8 @@
 .include "memman.inc"
 
 .segment "HEADER"
-free_addr:	.word $BF37
-first_item:	.word $BF37
+free_addr:	.res 2
+first_item:	.res 2
 id_bitmap:	.res 32
 
 .segment "JUMPTABLE"
