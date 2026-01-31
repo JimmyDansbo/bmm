@@ -200,11 +200,15 @@ Communication registers: A, Y, X & C
 Purpose: Free a memory area  
 Communication registers: A, Y & C
 
-**Description** Free a previously allocated memory area. The function defragments the used memory which means that allocated memory areas can change address. It is especially important to call `mm_get_ptr` if a direct address of a memory area is needed after a call to `mm_free`
+**Description** Free a previously allocated memory area.  
+The function can defragment the memory right away or simply mark it as dirty.  
+Dirty memory can not be used again until a memory defragmentation has been run.  
+When memory is defragmented, it means that allocated memory get's new pointers and it is therefor very importan to get the correct pointers throuh a call to `mm_get_ptr`.
 | Input | Purpose |
 |-------|---------|
 | A | low-byte of handle |
 | Y | high-byte of handle |
+| C | clear=defrag memory, set=mark only
 
 | Output | Description |
 |--------|-------------|
