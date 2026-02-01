@@ -20,7 +20,7 @@ Version 0.9
 	*[mm_alloc](#function-name-mm_alloc)  
 	*[mm_get_ptr](#function-name-mm_get_ptr)  
 	*[mm_free](#function-name-mm_free)  
-	*[mm_defrag](#function-name-mm_defrag)
+	*[mm_defrag](#function-name-mm_defrag)  
 	*[mm_set_isr](#function-name-mm_set_isr)  
 	*[mm_clear_isr](#function-name-mm_clear_isr)
 * [Lowram Functions](#lowram-functions)  
