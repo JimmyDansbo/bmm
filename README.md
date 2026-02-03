@@ -171,7 +171,7 @@ Communication registers: A, Y, X & C
 Preserves: X
 
 **Description** Allocates the specified amount of memory in a bank.  
-If a dirty memory area is found to belarge enough to accommodate the requested size, it will be re-allocated and the amount of available memory will stay unchanged.
+If a dirty memory area is found to be large enough to accommodate the requested size, it will be re-allocated and the amount of available memory will stay unchanged.
 | Input | Purpose |
 |-------|---------|
 | A | low-byte of bytes to allocate |
@@ -190,7 +190,7 @@ Communication registers: A, Y, X & C
 
 **Description** Returns the actual address of a memory area identified by handle.  
 This function should be called to ensure correct address of a memory area if memory defragmentation has been performed.  
-Only the handle of an allocated memory area is guaranteed to stay the sam.
+Only the handle of an allocated memory area is guaranteed to stay the same.
 | Input | Purpose |
 |-------|---------|
 | A | low-byte of handle |
@@ -201,7 +201,7 @@ This function can be called in a different way to look for dirty memory areas in
 |-------|---------|
 | A | Set to 0 to look for dirty memory |
 | X | RAM bank |
-| Y | 0 if searching from beginning ofr RAM bank |
+| Y | 0 if searching from beginning of RAM bank |
 
 In any case, the output of the function is the same.
 
@@ -220,7 +220,7 @@ Communication registers: A, Y & C
 The function can defragment the memory right away or simply mark it as dirty.  
 Dirty memory may be re-used if it is large enough to contain a new request.  
 A request to allocate memory will use the first dirty memory area large enough to hold it, even if it means using a memory area much larger than the requested size.  
-When memory is defragmented, it means that allocated memory get's new pointers and it is therefor very important to get the correct pointers throuh a call to `mm_get_ptr`.
+When memory is defragmented, it means that allocated memory get's new pointers and it is therefore very important to get the correct pointers through a call to `mm_get_ptr`.
 | Input | Purpose |
 |-------|---------|
 | A | low-byte of handle |
@@ -263,6 +263,7 @@ This can be used to check if an allocated memory area takes up more space than w
 | C | Set on error |
 | A | Low-byte of size or errorcode if C set |
 | Y | High-byte of size |
+
 ### Function name: mm_set_isr
 Purpose: Install banked ISR  
 Communication registers: A, Y & X  
@@ -379,6 +380,7 @@ Offset constant: `MM_STAY_BANK_OFFS`
 | X | RAM bank to write to |
 | A | low-byte to write to banked address |
 | Y | high-byte to write to banked address |
+
 ### Function name: mm_bank_copy
 Purpose: Copy memory within banks  
 Communication registers: A & X  
