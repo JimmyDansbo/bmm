@@ -16,7 +16,7 @@ MM_BANK_COPY_OFFS	= $6E
 
 .ifndef SKIPIMPORT
 .import mm_init, mm_set_isr, mm_clear_isr, mm_alloc, mm_remaining, mm_free, mm_init_bank
-.import mm_update_zp, mm_get_ptr, mm_defrag
+.import mm_update_zp, mm_get_ptr, mm_defrag, mm_get_size
 .endif
 
 .endif

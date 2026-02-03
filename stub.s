@@ -16,3 +16,4 @@ id_bitmap:	.res 32
 	jmp	mm_init_bank
 	jmp	mm_get_ptr
 	jmp	mm_defrag
+	jmp	mm_get_size

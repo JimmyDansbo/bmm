@@ -2,11 +2,11 @@
 SKIPIMPORT=1
 .include "memman.inc"
 
-MEMMAN_VERSION	= $0009
+MEMMAN_VERSION	= $000A
 
 .import __MMLOWRAM_SIZE__
 .export mm_init, mm_set_isr, mm_clear_isr, mm_alloc, mm_remaining, mm_free, mm_init_bank
-.export mm_update_zp, mm_get_ptr, mm_defrag
+.export mm_update_zp, mm_get_ptr, mm_defrag, mm_get_size
 
 .segment "MEMMAN"
 lowram_addr:	.res	2
@@ -46,6 +46,28 @@ stay_bank:		; Store A to lowbyte, Y to highbyte			X=bank
 ; Bank copy function uses two ZP pointers
 bank_cpy:
 	jmp	$0000
+
+;*****************************************************************************
+; Get the size of an allocated memory area
+;=============================================================================
+; Inputs:	.A & .Y = handle_id (bank/cnt)
+;-----------------------------------------------------------------------------
+;*****************************************************************************
+.proc mm_get_size: near
+	jsr	mm_get_ptr	; Find actual address of handle_id
+	sta	scratch+0
+	sty	scratch+1
+	jsr	lday_bank	; Read address of next element
+	; Subtract current element address from next element address to get size
+	sec
+	sbc	scratch+0
+	pha
+	tya
+	sbc	scratch+1
+	tay
+	pla
+	rts
+.endproc
 
 ;*****************************************************************************
 ; Defragment memory by moving memory down over previously dirty areas

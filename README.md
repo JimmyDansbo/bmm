@@ -1,6 +1,6 @@
 # Banked Memory Manager
 Banked Memory Manager for Commander X16  
-Version 0.9  
+Version 0.10  
 *Author: Jimmy Dansbo*
 
 **Note that this documentation can change at any time.**
@@ -21,6 +21,7 @@ Version 0.9
 	* [mm_get_ptr](#function-name-mm_get_ptr)  
 	* [mm_free](#function-name-mm_free)  
 	* [mm_defrag](#function-name-mm_defrag)  
+	* [mm_get_size](#function-name-mm_get_size)
 	* [mm_set_isr](#function-name-mm_set_isr)  
 	* [mm_clear_isr](#function-name-mm_clear_isr)
 * [Lowram Functions](#lowram-functions)  
@@ -36,7 +37,7 @@ Version 0.9
 The Banked Memory Manager library is designed to ease using banked memory in programs and libraries designed for the Commander X16.  
 The library is designed to handle banked memory even if it is loaded into a memory bank itself. It is able to allocate memory in any RAM bank, except bank 0 and it will keep track of remaining memory in a bank as well as pointers to allocated memory areas.  
 The library utilizes handles to let the user easily free an allocated memory area again.  
-**NOTE:** When a memory area is freed, the library defragments the remaining memory areas, potentially changing their address.  
+**NOTE:** When a memory area is freed, it can either be done by marking the freed memory as dirty or by defragmenting the remaining memory. When defragmentation is chosen, it is important to get new pointers with the `mm_get_ptr` function as addresses may have changed.  
 The `mm_get_ptr` function will always return the correct address of a memory area identified by handle.   
 The library also makes several bank safe functions availabe to load, store and copy inside banked memory.
 ## Memory Bank Header
@@ -54,13 +55,15 @@ The header has the following layout.
 This means that the library can use the remaining available space in an otherwise used memory bank, provided the first 36 bytes are free to initialize the bank.
 ## Memory Area Header
 
-When a memory area is allocated, it takes up 4 bytes more than the requested space.  
+When a memory area is allocated, it takes up 4 bytes more than the requested size.  
 These 4 bytes are used for the memory area header:
 | Offset | Size | Description |
 |--------|------|-------------|
 |   $00  | 2 bytes | Address to next memory element |
 |  $02 | 1 byte | Handle ID in current bank |
-| $03 | 1 byte | Checksum of header |
+| $03 | 1 byte | Checksum of header |  
+
+If bit6 is set in high-byte of the address to next element, it means that the current area is marked as dirty.
 ## Using in your project
 The library is designed to be used in CC65 assembler projects. To include the library in your own project, you need `memman.inc` & `memman.o`
 
@@ -73,7 +76,7 @@ SEGMENTS {
 	...
 }
 ```
-The MMLOWRAM segment must have the define=yes option to ensure that lowram does not exceed the expected size.
+The MMLOWRAM segment must have the define=yes option to ensure the linker can check the size of the segment.
 
 In order to use the functions and constants in the library, you should include the `memman.inc` file in your own source files.
 
@@ -129,7 +132,7 @@ Purpose: Initialize a memory bank for use by the library.
 Communication registers: A, Y & X  
 Preserves: X
 
-**Description** Initialize a memory bank by setting the 4 first bytes of the bank to the first available memory address, followed by 32 bytes for bank handle bitmap.
+**Description** Initialize a memory bank by setting the 4 first bytes of the bank to the first available memory address, followed by 32 bytes for bank handle bitmap. See [Memory Bank Header](#memory-bank-header)
 | Registers | Purpose |
 |-----------|---------|
 | A | Low-byte of next free address |
@@ -151,7 +154,7 @@ Purpose: Return the amount of memory available in a specified memory bank
 Communication registers: A, Y, X  
 Preserves: X
 
-**Description** Calculates and returns the amount of free memory in a specified bank.
+**Description** Calculates and returns the amount of free memory in a specified bank. This does not include memory areas that are marked as dirty. In order to ensure an accurate amount is returned, the memory should be defragmented first.
 
 | Input | Purpose |
 |-------|---------|
@@ -167,11 +170,12 @@ Purpose: Allocate a memory area
 Communication registers: A, Y, X & C  
 Preserves: X
 
-**Description** Allocates the specified amount of memory in a bank.
+**Description** Allocates the specified amount of memory in a bank.  
+If a dirty memory area is found to belarge enough to accommodate the requested size, it will be re-allocated and the amount of available memory will stay unchanged.
 | Input | Purpose |
 |-------|---------|
-| A | low-byte of number of bytes to allocate |
-| Y | high-byte of number of bytes to allocate |
+| A | low-byte of bytes to allocate |
+| Y | high-byte of bytes to allocate |
 | X | RAM bank to allocate memory in
 
 | Output | Description |
@@ -184,7 +188,9 @@ Preserves: X
 Purpose: Return address of memory area identified by handle  
 Communication registers: A, Y, X & C
 
-**Description** Returns the actual address of a memory area identified by handle. This function should be called every time the address is needed as the library can change the address on the fly. Only the handle of an allocated memory area is guaranteed to stay the sam.
+**Description** Returns the actual address of a memory area identified by handle.  
+This function should be called to ensure correct address of a memory area if memory defragmentation has been performed.  
+Only the handle of an allocated memory area is guaranteed to stay the sam.
 | Input | Purpose |
 |-------|---------|
 | A | low-byte of handle |
@@ -195,6 +201,7 @@ This function can be called in a different way to look for dirty memory areas in
 |-------|---------|
 | A | Set to 0 to look for dirty memory |
 | X | RAM bank |
+| Y | 0 if searching from beginning ofr RAM bank |
 
 In any case, the output of the function is the same.
 
@@ -211,8 +218,9 @@ Communication registers: A, Y & C
 
 **Description** Free a previously allocated memory area.  
 The function can defragment the memory right away or simply mark it as dirty.  
-Dirty memory can not be used again until a memory defragmentation has been run.  
-When memory is defragmented, it means that allocated memory get's new pointers and it is therefor very importan to get the correct pointers throuh a call to `mm_get_ptr`.
+Dirty memory may be re-used if it is large enough to contain a new request.  
+A request to allocate memory will use the first dirty memory area large enough to hold it, even if it means using a memory area much larger than the requested size.  
+When memory is defragmented, it means that allocated memory get's new pointers and it is therefor very important to get the correct pointers throuh a call to `mm_get_ptr`.
 | Input | Purpose |
 |-------|---------|
 | A | low-byte of handle |
@@ -239,6 +247,22 @@ Communication registers: A, X & C
 | C | Set on error |
 | A | Error code on error |
 
+### Function name: mm_get_size
+Purpose: Get the size of a memory area identified by handle  
+Communications registers: A, Y, X & C
+
+**Description** Get the actual size of an allocated memory area, minus the 4 bytes for header.  
+This can be used to check if an allocated memory area takes up more space than was actually requested. This could happen if a dirty memory area has been re-allocated.
+| Input | Purpose |
+|-------|---------|
+| A | Low-byte of handle |
+| Y | High-byte of handle |
+
+| Output | Description |
+|--------|-------------|
+| C | Set on error |
+| A | Low-byte of size or errorcode if C set |
+| Y | High-byte of size |
 ### Function name: mm_set_isr
 Purpose: Install banked ISR  
 Communication registers: A, Y & X  
