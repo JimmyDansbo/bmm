@@ -595,11 +595,19 @@ nodirty:; Check if available space is larger than requested space
 	jsr	updzp1
 	lda	#0
 	; Zero out bitmap and the address field of the first available memory
-	ldy	#BITMAP_SIZE-1+2
+	ldy	#BITMAP_SIZE-1
 :	jsr	sta_bank
 	dey
 	bne	:-
-	jmp	sta_bank
+	jsr	sta_bank
+	lda	#<FREE_ADDR
+	ldy	#>FREE_ADDR
+	jsr	updzp1
+	jsr	lday_bank
+	jsr	updzp1
+	lda	#0
+	ldy	#0
+	jmp	stay_bank
 .endproc
 
 ;*****************************************************************************
