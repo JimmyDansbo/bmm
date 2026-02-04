@@ -278,7 +278,7 @@ Uses: A
 
 **Description** Remove the banked interrupt service routine and restore the original interrupt handler.
 ## Zero Page
-A few functions are exported that only used to manipulate the Zero Page addresses used by the library.
+A few functions are exported that are only used to manipulate the Zero Page addresses used by the library.
 ### Function name: mm_update_zp
 Purpose: Update the ZeroPage pointers used by the library  
 Communication registers: A & Y
@@ -290,8 +290,8 @@ Communication registers: A & Y
 | Y | Second ZeroPage address to use for pointer (zp2) |
 
 ### Function name: mm_read_zp1
-Purpose: Read the value/address currently stored in ZP1
-Communication registers: A & Y
+Purpose: Read the value/address currently stored in ZP1  
+Communication registers: A & Y  
 
 **Description** Returns the values stored in the first Zero Page Pointer that was provided to the library.
 | Output | Description |
@@ -300,8 +300,8 @@ Communication registers: A & Y
 | Y | high-byte of ZP1
 
 ### Function name: mm_read_zp2
-Purpose: Read the value/address currently stored in ZP2
-Communication registers: A & Y
+Purpose: Read the value/address currently stored in ZP2  
+Communication registers: A & Y  
 
 **Description** Returns the values stored in the second Zero Page Pointer that was provided to the library.
 | Output | Description |
@@ -310,8 +310,8 @@ Communication registers: A & Y
 | Y | high-byte of ZP2
 
 ### Function name: mm_store_zp1
-Purpose: Store a new value/address in ZP1
-Communication registers: A & Y
+Purpose: Store a new value/address in ZP1  
+Communication registers: A & Y  
 
 **Description** Update the first Zero Page pointer (zp1) with a new value/address.
 | Input | Purpose |
@@ -320,8 +320,8 @@ Communication registers: A & Y
 | Y | high-byte of new value/address
 
 ### Function name: mm_store_zp2
-Purpose: Store a new value/address in ZP2
-Communication registers: A & Y
+Purpose: Store a new value/address in ZP2  
+Communication registers: A & Y  
 
 **Description** Update the second Zero Page pointer (zp2) with a new value/address.
 | Input | Purpose |
