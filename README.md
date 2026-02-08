@@ -53,6 +53,7 @@ The library utilizes handles to let the user easily free an allocated memory are
 **NOTE:** When a memory area is freed, it can either be done by marking the freed memory as dirty or by defragmenting the remaining memory. When defragmentation is chosen, it is important to get new pointers with the `mm_get_ptr` function as addresses may have changed.  
 The `mm_get_ptr` function will always return the correct address of a memory area identified by handle.   
 The library also makes several bank safe functions availabe to load, store and copy inside banked memory.
+
 ## Memory Bank Header
 
 Any memory bank, except bank 0, can be initialized for use with the library.  
@@ -66,6 +67,7 @@ The header has the following layout.
 | $A004   | 32 bytes | Handle bitmap |
 
 This means that the library can use the remaining available space in an otherwise used memory bank, provided the first 36 bytes are free to initialize the bank.
+
 ## Memory Area Header
 
 When a memory area is allocated, it takes up 4 bytes more than the requested size.  
@@ -76,8 +78,10 @@ These 4 bytes are used for the memory area header:
 |  $02 | 1 byte | Handle ID in current bank |
 | $03 | 1 byte | Checksum of header |  
 
-If bit6 is set in high-byte of the address to next element, it means that the current area is marked as dirty.
+If bit 6 is set in high-byte of the address to next element, it means that the current area is marked as dirty.
+
 ## Using in your project
+
 The library is designed to be used in CC65 assembler projects. To include the library in your own project, you need `memman.inc` & `memman.o`
 
 When linking your project with the banked memory manager library, you need a custom cc65 configuration file. The configuration file must contain definition of two segments `MEMMAN` & `MMLOWRAM` like this:
@@ -106,7 +110,9 @@ ld65 -C yourproject.cfg memman.o yourproject.asm -o yourproject.prg
 | $03 | MM_ERR_NOHANDLE | No available handles in current bank |
 | $04 | MM_ERR_HANDLE_NOTFOUND | Requested handle was not found |
 | $05 | MM_ERR_CORRUPT_HDR | Memory area header has been found corrupted |
+
 ## Functions
+
 ### Function name: mm_init
 Purpose: Initialize Banked Memory Manager  
 Communication registers: A, Y & X
@@ -120,7 +126,7 @@ Communication registers: A, Y & X
 
 The two ZeroPage pointers will be used by the library to allocate memory and copy memory within banks.
 
-Before calling `mm_init` the first ZeroPage pointer (zp1) must containt the addres to 256 bytes of lowram that will be used by the library.
+Before calling `mm_init` the first ZeroPage pointer (zp1) must containt the address to 256 bytes of lowram that will be used by the library.
 
 The second ZeroPage pointer (zp2) must contain the first available address in the current RAM bank. If it is an empty RAM bank, the address should be set to $A000.
 
@@ -287,6 +293,7 @@ Uses: A
 **Description** Remove the banked interrupt service routine and restore the original interrupt handler.
 ## Zero Page
 A few functions are exported that are only used to manipulate the Zero Page addresses used by the library.
+
 ### Function name: mm_update_zp
 Purpose: Update the ZeroPage pointers used by the library  
 Communication registers: A & Y
