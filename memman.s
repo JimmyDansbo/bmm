@@ -27,11 +27,6 @@ MEM_HDR_SIZE	= 4
 BANK_HDR_SIZE	= 36
 BITMAP_SIZE	= BANK_HDR_SIZE-4	; 4 bytes for addresses
 
-; Offsets from low-ram start address
-_isr_bank	= 6
-_isr_addr	= 10
-_isr_orig	= 16
-
 ; Internal jump table into lowram functions
 ; The bank-load and store functions use first ZP pointer for the address and X for bank
 mm_lda_bank:
@@ -300,7 +295,7 @@ loop:	lda	scratch+3	; Ensure bit 6 of high-byte is 0 for address
 	ldy	#MEM_HANDLE_OFS	; Read handle_id
 	jsr	lda_bank
 	; compare to the one specified in the call
-	cmp	scratch
+	cmp	scratch+0
 	beq	end		; If equal, return address otherwise check next
 	bra	loop
 end:	pla			; clear bank-part of handle from stack
@@ -765,6 +760,8 @@ zp4:	ldy	$42+1
 	sta	zp18+1
 	sta	zp19+1
 	sta	zp1a+1
+	sta	iz01+1
+	sta	iz04+1
 	sty	zp20+1
 	sty	zp21+1
 	inc
@@ -775,6 +772,8 @@ zp4:	ldy	$42+1
 	sta	mm_store_zp1h+1
 	sta	mm_read_zp1+3
 	sta	mm_read_zp1h+1
+	sta	iz02+1
+	sta	iz03+1
 	sty	mm_store_zp2+3
 	sty	mm_store_zp2h+1
 	sty	mm_read_zp2+3
@@ -947,13 +946,11 @@ shift_done:
 	eor	scratch+5
 	sta	scratch+5
 	ldy	#MEM_HANDLE_OFS
-	jsr	lda_bank
+	jsr	lday_bank
 	eor	scratch+5
 	eor	#$AA
 	sta	scratch+5
-	iny	;MEM_CRC_OFS
-	jsr	lda_bank
-	cmp	scratch+5
+	cpy	scratch+5
 	clc
 	beq	:+
 	sec
@@ -1222,23 +1219,34 @@ _low_scratch:
 ; function is performed before continuing on to previous interrupt handler
 ;=============================================================================
 ; ROM has already preserved registers and previous interrupt handler should
-; ensure they are restored. RAM bank is restored before call to original
+; ensure they are restored. RAM bank & ZP1 is restored before call to original
 ; interrupt handler
 ;*****************************************************************************
 _isr:
 	; Save current RAM bank
+iz01:	lda	$42+0
+	pha
+iz02:	lda	$42+1
+	pha
 	lda	X16_RAMBank_Reg
 	pha
 	; Set new RAM bank
-	lda	#$FF	; Must be modified after copy to lowram (offset=4)
+	lda	#$FF	; Must be modified after copy to lowram (offset=12)
+_isr_bank=*-_low_scratch-1
 	sta	X16_RAMBank_Reg
 	; Call banked ISR
-	jsr	$FFFF	; Must be modified after copy to lowram (offset=8,9)
+	jsr	$FFFF	; Must be modified after copy to lowram (offset=16,17)
+_isr_addr=*-_low_scratch-2
 	; Restore RAM bank
 	pla
 	sta	X16_RAMBank_Reg
 	; Continue to original ISR
-	jmp	$FFFF	; Must be modified after copy to lowram (offset=14,15)
+	pla
+iz03:	sta	$42+1
+	pla
+iz04:	sta	$42+0
+	jmp	$FFFF	; Must be modified after copy to lowram (offset=28,29)
+_isr_orig=*-_low_scratch-2
 
 ;*****************************************************************************
 ; Load a byte from banked RAM pointed to by ZP pointer LD_ST_BANK_PTR in bank
