@@ -639,7 +639,15 @@ nodirty:; Check if available space is larger than requested space
 ; Preserves:	.X
 ;*****************************************************************************
 .proc mm_init: near
-	jsr	mm_update_zp
+	pha
+	phy
+	sta	zp0+1
+	sta	zp2+1
+	sty	zp3+1
+	inc
+	iny
+	sta	zp1+1
+	sty	zp4+1
 	; Store low-ram addresses in library and low-ram mem copy function
 zp0:	lda	$42
 	sta	lowram_addr
@@ -665,6 +673,7 @@ loop:	lda	_low_scratch,y
 zp2:	sta	($42),y
 	dey
 	bne	loop
+
 	; Update jumptable
 	lda	#(_lda_bank-_low_scratch)	; Offset of _lda_bank
 	clc
@@ -713,11 +722,21 @@ zp2:	sta	($42),y
 	lda	#0
 	adc	lowram_addr+1
 	sta	bank_cpy+2
+
+	ply
+	pla
+	jsr	mm_update_zp
+
 	; Initialize memory bank 
-zp3:	lda	$42+0
-zp4:	ldy	$42+1
+zp3:	lda	$44+0
+zp4:	ldy	$44+1
 	jmp	mm_init_bank
 .endproc
+
+.macro STA_OFS ofs
+	ldy	#ofs
+	jsr	sta_bank
+.endmacro
 
 ;*****************************************************************************
 ; Update ZP pointers in the library
@@ -728,10 +747,11 @@ zp4:	ldy	$42+1
 ; Uses:		.A & .Y
 ;*****************************************************************************
 .proc mm_update_zp: near
+	phy		; Save both pointers on stack
+	pha
 	; Update ZP pointers
-	sta	mm_init::zp0+1
-	sta	mm_init::zp2+1
-	sty	mm_init::zp3+1
+	sta	zp0+1
+	sta	zp1+1
 	sta	mm_store_zp1+1
 	sta	mm_store_zp1l+1
 	sta	mm_read_zp1+1
@@ -740,46 +760,60 @@ zp4:	ldy	$42+1
 	sty	mm_store_zp2l+1
 	sty	mm_read_zp2+1
 	sty	mm_read_zp2l+1
-	sta	zp01+1
-	sta	zp02+1
-	sta	zp03+1
-	sta	zp04+1
-	sta	zp05+1
-	sta	zp06+1
-	sta	zp07+1
-	sta	zp08+1
-	sta	zp09+1
-	sta	zp10+1
-	sta	zp11+1
-	sta	zp12+1
-	sta	zp13+1
-	sta	zp14+1
-	sta	zp15+1
-	sta	zp16+1
-	sta	zp17+1
-	sta	zp18+1
-	sta	zp19+1
-	sta	zp1a+1
-	sta	iz01+1
-	sta	iz04+1
-	sty	zp20+1
-	sty	zp21+1
+	; Switch to high-byte of pointers
 	inc
 	iny
-	sta	mm_init::zp1+1
-	sty	mm_init::zp4+1
 	sta	mm_store_zp1+3
 	sta	mm_store_zp1h+1
 	sta	mm_read_zp1+3
 	sta	mm_read_zp1h+1
-	sta	iz02+1
-	sta	iz03+1
 	sty	mm_store_zp2+3
 	sty	mm_store_zp2h+1
 	sty	mm_read_zp2+3
 	sty	mm_read_zp2h+1
-	sta	zpp1+1
-	sty	zpp2+1
+
+	; Set ZP pointer to lowram
+	lda	lowram_addr
+	ldy	lowram_addr+1
+	jsr	mm_store_zp1
+	pla		; Get low-byte of ZP1
+	; Store it in the low-rom function sta_bank
+	ldy	#_sta_zp1l0
+zp0:	sta	($42),y
+	ldy	#_sta_zp1l1
+zp1:	sta	($42),y
+	; Use low-ram function sta_bank to update the rest of lowram pointers
+	STA_OFS	_isr_zp1l0
+	STA_OFS	_isr_zp1l1
+	STA_OFS	_lda_zp1l0
+	STA_OFS	_lda_zp1l1
+	STA_OFS	_lday_zp1l0
+	STA_OFS	_lday_zp1l1
+	STA_OFS	_lday_zp1l2
+	STA_OFS	_lday_zp1l3
+	STA_OFS	_ldayx_zp1l0
+	STA_OFS	_ldayx_zp1l1
+	STA_OFS	_ldayx_zp1l2
+	STA_OFS	_ldayx_zp1l3
+	STA_OFS	_ldayx_zp1l4
+	STA_OFS	_ldayx_zp1l5
+	STA_OFS	_stay_zp1l0
+	STA_OFS	_stay_zp1l1
+	STA_OFS	_stay_zp1l2
+	STA_OFS	_stay_zp1l3
+	STA_OFS	_cpy_zp1l0
+	STA_OFS	_cpy_zp1l1
+	; Switch to high-byte of ZP1
+	inc
+	STA_OFS	_isr_zp1h0
+	STA_OFS	_isr_zp1h1
+	STA_OFS	_cpy_zp1h0
+	pla		; Get low-byte of ZP2
+	STA_OFS	_cpy_zp2l0
+	STA_OFS	_cpy_zp2l1
+	; Switch to high-byte of ZP2
+	inc
+	STA_OFS	_cpy_zp2h0
 	rts
 .endproc
 
@@ -1224,9 +1258,11 @@ _low_scratch:
 ;*****************************************************************************
 _isr:
 	; Save current RAM bank
-iz01:	lda	$42+0
+	lda	$42+0
+_isr_zp1l0=*-_low_scratch-1
 	pha
-iz02:	lda	$42+1
+	lda	$42+1
+_isr_zp1h0=*-_low_scratch-1
 	pha
 	lda	X16_RAMBank_Reg
 	pha
@@ -1242,9 +1278,11 @@ _isr_addr=*-_low_scratch-2
 	sta	X16_RAMBank_Reg
 	; Continue to original ISR
 	pla
-iz03:	sta	$42+1
+	sta	$42+1
+_isr_zp1h1=*-_low_scratch-1
 	pla
-iz04:	sta	$42+0
+	sta	$42+0
+_isr_zp1l1=*-_low_scratch-1
 	jmp	$FFFF	; Must be modified after copy to lowram (offset=28,29)
 _isr_orig=*-_low_scratch-2
 
@@ -1262,7 +1300,8 @@ _isr_orig=*-_low_scratch-2
 _lda_bank:
 	cpx	X16_RAMBank_Reg
 	bne	:+
-zp01:	lda	($42),y
+	lda	($42),y
+_lda_zp1l0=*-_low_scratch-1
 	rts
 :	phx			; Preserve bank
 	phy			; Preserve offset
@@ -1271,7 +1310,8 @@ zp01:	lda	($42),y
 	phy			; Move original RAM bank from Y to X through stack
 	plx
 	ply			; Pull offset from stack
-zp02:	lda	($42),y		; Load value from address pointed to by ZP pointer
+	lda	($42),y		; Load value from address pointed to by ZP pointer
+_lda_zp1l1=*-_low_scratch-1
 	stx	X16_RAMBank_Reg	; Restore original RAM bank
 	plx			; Restore RAM bank from caller
 	pha			; Push and restore value to set flags
@@ -1292,10 +1332,13 @@ zp02:	lda	($42),y		; Load value from address pointed to by ZP pointer
 _lday_bank:
 	cpx	X16_RAMBank_Reg
 	bne	:+
-zp03:	lda	($42),y
+	lda	($42),y
+_lday_zp1l0=*-_low_scratch-1
+
 	pha
 	iny
-zp04:	lda	($42),y
+	lda	($42),y
+_lday_zp1l1=*-_low_scratch-1
 	tay
 	pla
 	rts
@@ -1306,10 +1349,12 @@ zp04:	lda	($42),y
 	phy			; Move original RAM bank through stack to X
 	plx
 	ply			; Pull offset from stack
-zp05:	lda	($42),y		; Read low-byte
+	lda	($42),y		; Read low-byte
+_lday_zp1l2=*-_low_scratch-1
 	pha			; Save low-byte on stack
 	iny
-zp06:	lda	($42),y		; Read high-byte
+	lda	($42),y		; Read high-byte
+_lday_zp1l3=*-_low_scratch-1
 	tay			; Move high-byte to .Y
 	pla			; Pull low-byte from stack
 	stx	X16_RAMBank_Reg	; Restore original RAM bank
@@ -1330,13 +1375,16 @@ zp06:	lda	($42),y		; Read high-byte
 _ldayx_bank:
 	cpx	X16_RAMBank_Reg
 	bne	:+
-zp07:	lda	($42),y
+	lda	($42),y
+_ldayx_zp1l0=*-_low_scratch-1
 	pha
 	iny
-zp08:	lda	($42),y
+	lda	($42),y
+_ldayx_zp1l1=*-_low_scratch-1
 	pha
 	iny
-zp09:	lda	($42),y
+	lda	($42),y
+_ldayx_zp1l2=*-_low_scratch-1
 	tax
 	ply
 	pla
@@ -1347,13 +1395,16 @@ zp09:	lda	($42),y
 	phy			; Move original RAM bank through stack to X
 	plx
 	ply			; Pull offset from stack
-zp10:	lda	($42),y		; Load value from address pointed to by ZP pointer with .Y
+	lda	($42),y		; Load value from address pointed to by ZP pointer with .Y
+_ldayx_zp1l3=*-_low_scratch-1
 	pha			; Save value to stack
 	iny
-zp11:	lda	($42),y		; Load next value from address pointed to by ZP pointer with .Y
+	lda	($42),y		; Load next value from address pointed to by ZP pointer with .Y
+_ldayx_zp1l4=*-_low_scratch-1
 	pha			; Store value in .X
 	iny
-zp12:	lda	($42),y		; Load next value from address pointed to by ZP pointer with .Y
+	lda	($42),y		; Load next value from address pointed to by ZP pointer with .Y
+_ldayx_zp1l5=*-_low_scratch-1
 	stx	X16_RAMBank_Reg
 	tax
 	ply
@@ -1375,7 +1426,8 @@ zp12:	lda	($42),y		; Load next value from address pointed to by ZP pointer with 
 _sta_bank:
 	cpx	X16_RAMBank_Reg
 	bne	:+
-zp13:	sta	($42),y
+	sta	($42),y
+_sta_zp1l0=*-_low_scratch-1
 	rts
 :	phx			; Preserve .X 
 	pha			; Preserve values to write
@@ -1383,7 +1435,8 @@ zp13:	sta	($42),y
 	stx	X16_RAMBank_Reg	; Set new RAM bank
 	tax			; Move original RAM bank to .X
 	pla			; Restore value to write
-zp14:	sta	($42),y		; Store value in .A to address pointed to by ZP pointer
+	sta	($42),y		; Store value in .A to address pointed to by ZP pointer
+_sta_zp1l1=*-_low_scratch-1
 	stx	X16_RAMBank_Reg	; Restore RAM bank
 	plx			; Restore .X
 	rts
@@ -1403,10 +1456,12 @@ _stay_bank:
 	cpx	X16_RAMBank_Reg
 	bne	:+
 	pha
-zp15:	sta	($42)
+	sta	($42)
+_stay_zp1l0=*-_low_scratch-1
 	tya
 	ldy	#1
-zp16:	sta	($42),y
+	sta	($42),y
+_stay_zp1l1=*-_low_scratch-1
 	tay
 	pla
 	rts
@@ -1417,10 +1472,12 @@ zp16:	sta	($42),y
 	plx			; Pull .low byte from stack and store it in .X temporarily
 	pha			; Push original RAM bank to stack
 	txa			; Move low byte from .X back to .A
-zp17:	sta	($42)		; Store low byte to address pointed to by ZP pointer
+	sta	($42)		; Store low byte to address pointed to by ZP pointer
+_stay_zp1l2=*-_low_scratch-1
 	tya			; Store high byte to address pointed to by ZP pointer with .Y added
 	ldy	#1
-zp18:	sta	($42),y
+	sta	($42),y
+_stay_zp1l3=*-_low_scratch-1
 	tay			; Restore high byte to Y
 	ldx	X16_RAMBank_Reg	; Restore RAM bank value from the call
 	pla			; Restore RAM bank to original
@@ -1450,21 +1507,27 @@ _bank_cpy:
 	sta	X16_RAMBank_Reg
 loop:	cpx	X16_RAMBank_Reg
 	bne	:+
-zp19:	lda	($42),y
-zp20:	sta	($44),y
+	lda	($42),y
+_cpy_zp1l0=*-_low_scratch-1
+	sta	($44),y
+_cpy_zp2l0=*-_low_scratch-1
 	bra	cont
 :	pha
 	; Read byte and save on stack
-zp1a:	lda	($42),y
+	lda	($42),y
+_cpy_zp1l1=*-_low_scratch-1
 	stx	X16_RAMBank_Reg
-zp21:	sta	($44),y
+	sta	($44),y
+_cpy_zp2l1=*-_low_scratch-1
 	; Read source bank from stack and set it
 	pla
 	sta	X16_RAMBank_Reg
 cont:	iny
 	bne	:+
-zpp1:	inc	42+1
-zpp2:	inc	44+1
+	inc	42+1
+_cpy_zp1h0=*-_low_scratch-1
+	inc	44+1
+_cpy_zp2h0=*-_low_scratch-1
 :	; Decrement counter
 lsl0:	lda	_low_scratch+0
 	bne	:+
