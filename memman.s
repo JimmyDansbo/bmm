@@ -233,22 +233,22 @@ handle:	pla			; Get cnt-part of handle_id
 ;*****************************************************************************
 .proc mm_get_ptr: near
 	pha			; Save bank part of handle
-	cmp	#0
+	cmp	#0		; Are we looking for handle or dirty memory?
 	bne	normal
-	cpy	#0
+	cpy	#0		; Are we looking for dirty memory from start?
 	beq	checknext
 	bra	dirty
 normal:	tax			; .X = Bank
-	sty	scratch+0
+	sty	scratch+0	; Save handle id
 dirty:	lda	#<FIRST_ITEM
 	ldy	#>FIRST_ITEM
 	jsr	mm_store_zp1
-	; Read first memory block address
+	; Read memory block address
 checknext:
 	ldy	#0
 	jsr	lday_bank
 	; Check if high-byte of address is zero
-	cpy	#0
+	cpy	#0		; If zero, we have reached end of allocated memory
 	bne	:+
 	pla			; Clear stack of bank-part of handle
 	lda	#MM_ERR_HANDLE_NOTFOUND
@@ -257,7 +257,7 @@ checknext:
 	; If it is not zero, we can check the memory block for handle id
 :	sta	scratch+2
 	sty	scratch+3
-	; Check if current handle id matches
+	; Check if memory area is actually allocated
 loop:	lda	scratch+3	; Ensure bit 6 of high-byte is 0 for address
 	and	#$BF
 	tay
@@ -267,7 +267,7 @@ loop:	lda	scratch+3	; Ensure bit 6 of high-byte is 0 for address
 	ldy	#0
 	jsr	lday_bank
 	; Check if the high-byte of address is zero
-	cpy	#0
+	cpy	#0		; If zero, we have reached end of allocated memory
 	bne	:+
 	pla			; clear stack of bank-part of handle
 	lda	#MM_ERR_HANDLE_NOTFOUND
@@ -285,12 +285,14 @@ loop:	lda	scratch+3	; Ensure bit 6 of high-byte is 0 for address
 	pha			; Save it on stack again
 	; If bank-part of handle is 0, we check if address is marked
 	bne	:+
+	; Check if we have found dirty memory
 	lda	scratch+3
-	and	#%01000000
+	and	#%01000000	; If bit6 set, dirty memory found, go to end
 	bne	end
 	bra	loop
-:	lda	scratch+3
-	and	#%01000000
+:	; Ensure that memory is not dirty before checking handle
+	lda	scratch+3
+	and	#%01000000	; If bit6 set, this memory can not be used, check next
 	bne	loop
 	ldy	#MEM_HANDLE_OFS	; Read handle_id
 	jsr	lda_bank
