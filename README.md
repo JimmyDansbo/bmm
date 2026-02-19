@@ -130,7 +130,7 @@ Before calling `mm_init` the first ZeroPage pointer (zp1) must containt the addr
 
 The second ZeroPage pointer (zp2) must contain the first available address in the current RAM bank. If it is an empty RAM bank, the address should be set to $A000.
 
-```
+```ASM
 	; Use golden memory $0400 as lowram
 	lda #<$0400
 	sta $30		; Store low-byte in zp1-low
