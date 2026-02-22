@@ -1,6 +1,6 @@
 # Banked Memory Manager
 Banked Memory Manager for Commander X16  
-Version 0.11  
+Version 0.12  
 *Author: Jimmy Dansbo*
 
 **Note that this documentation can change at any time.**
@@ -10,6 +10,7 @@ Version 0.11
 * [Overview](#overview)
 * [Memory Bank Header](#memory-bank-header)
 * [Memory Area Header](#memory-area-header)
+* [Memory Handle](#memory-handle)
 * [Using in your project](#using-in-your-project)
 * [Error codes](#error-codes)
 * [Functions](#functions)  
@@ -79,6 +80,13 @@ These 4 bytes are used for the memory area header:
 | $03 | 1 byte | Checksum of header |  
 
 If bit 6 is set in high-byte of the address to next element, it means that the current area is marked as dirty.
+
+## Memory Handle
+
+The memory handle is the way the library identifies allocated memory areas. It is a 16 bit value that is always passed in registers A and Y.  
+When using the handle with the library, the low-byte of the handle is always passed in register A and the high-byte in register Y.  
+The low-byte of the handle is the RAM bank in which the memory is allocated. The high-byte is the ID within that RAM bank.  
+This means that it is not possible to allocate more than 256 memory areas in a RAM bank which in turn means that if the average size of allocated memory is less than 28 bytes, the library will run out of handles before an empty RAM bank is filled.  
 
 ## Using in your project
 
