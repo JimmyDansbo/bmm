@@ -1306,18 +1306,16 @@ _lda_bank:
 _lda_zp1l0=*-_low_scratch-1
 	rts
 :	phx			; Preserve bank
-	phy			; Preserve offset
-	ldy	X16_RAMBank_Reg	; Save current RAM bank
+	lda	X16_RAMBank_Reg	; Save current RAM bank
 	stx	X16_RAMBank_Reg	; Set new RAM bank
-	phy			; Move original RAM bank from Y to X through stack
-	plx
-	ply			; Pull offset from stack
+	tax			; Move original RAM bank to X
 	lda	($42),y		; Load value from address pointed to by ZP pointer
 _lda_zp1l1=*-_low_scratch-1
+	pha
+	lda	X16_RAMBank_Reg
 	stx	X16_RAMBank_Reg	; Restore original RAM bank
-	plx			; Restore RAM bank from caller
-	pha			; Push and restore value to set flags
-	pla
+	tax			; Restore calling RAM bank to .X
+	pla			; Restore read value from stack
 	rts
 
 ;*****************************************************************************
@@ -1336,7 +1334,6 @@ _lday_bank:
 	bne	:+
 	lda	($42),y
 _lday_zp1l0=*-_low_scratch-1
-
 	pha
 	iny
 	lda	($42),y
@@ -1344,13 +1341,9 @@ _lday_zp1l1=*-_low_scratch-1
 	tay
 	pla
 	rts
-:	phx			; Preserve X
-	phy			; Preserve offset
-	ldy	X16_RAMBank_Reg	; Save original RAM bank
+:	lda	X16_RAMBank_Reg	; Save original RAM bank
 	stx	X16_RAMBank_Reg	; Switch RAM bank
-	phy			; Move original RAM bank through stack to X
-	plx
-	ply			; Pull offset from stack
+	tax			; Original RAM bank in .X
 	lda	($42),y		; Read low-byte
 _lday_zp1l2=*-_low_scratch-1
 	pha			; Save low-byte on stack
@@ -1358,9 +1351,10 @@ _lday_zp1l2=*-_low_scratch-1
 	lda	($42),y		; Read high-byte
 _lday_zp1l3=*-_low_scratch-1
 	tay			; Move high-byte to .Y
-	pla			; Pull low-byte from stack
+	lda	X16_RAMBank_Reg
 	stx	X16_RAMBank_Reg	; Restore original RAM bank
-	plx			; Restore X
+	tax			; Restore calling RAM bank to .X
+	pla			; Pull low-byte from stack
 	rts
 
 ;*****************************************************************************
@@ -1391,12 +1385,9 @@ _ldayx_zp1l2=*-_low_scratch-1
 	ply
 	pla
 	rts
-:	phy			; Save offset on stack
-	ldy	X16_RAMBank_Reg	; Save current RAM bank
+:	lda	X16_RAMBank_Reg	; Save current RAM bank
 	stx	X16_RAMBank_Reg	; Set new RAM bank
-	phy			; Move original RAM bank through stack to X
-	plx
-	ply			; Pull offset from stack
+	tax
 	lda	($42),y		; Load value from address pointed to by ZP pointer with .Y
 _ldayx_zp1l3=*-_low_scratch-1
 	pha			; Save value to stack
@@ -1471,9 +1462,8 @@ _stay_zp1l1=*-_low_scratch-1
 	pha			; Preserve low byte
 	lda	X16_RAMBank_Reg	; Save current RAM bank in .A
 	stx	X16_RAMBank_Reg	; Set the new RAM bank
-	plx			; Pull .low byte from stack and store it in .X temporarily
-	pha			; Push original RAM bank to stack
-	txa			; Move low byte from .X back to .A
+	tax
+	pla			; Get low-byte from stack
 	sta	($42)		; Store low byte to address pointed to by ZP pointer
 _stay_zp1l2=*-_low_scratch-1
 	tya			; Store high byte to address pointed to by ZP pointer with .Y added
@@ -1481,9 +1471,9 @@ _stay_zp1l2=*-_low_scratch-1
 	sta	($42),y
 _stay_zp1l3=*-_low_scratch-1
 	tay			; Restore high byte to Y
-	ldx	X16_RAMBank_Reg	; Restore RAM bank value from the call
-	pla			; Restore RAM bank to original
-	sta	X16_RAMBank_Reg
+	lda	X16_RAMBank_Reg	; Restore RAM bank value from the call
+	stx	X16_RAMBank_Reg
+	tax			; Restore X register
 	pla			; Restore A register
 	rts
 
