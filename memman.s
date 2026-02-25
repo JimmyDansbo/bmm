@@ -5,7 +5,7 @@ SKIPIMPORT=1
 .import __MMLOWRAM_SIZE__
 .export mm_init, mm_set_isr, mm_clear_isr, mm_alloc, mm_remaining, mm_free, mm_init_bank
 .export mm_update_zp, mm_get_ptr, mm_defrag, mm_get_size
-.export mm_lda_bank, mm_lday_bank, mm_ldayx_bank, mm_sta_bank, mm_stay_bank
+.export mm_lda_bank, mm_lday_bank, mm_ldayx_bank, mm_sta_bank, mm_stay_bank, mm_bank_copy
 .export mm_read_zp1, mm_read_zp1l, mm_read_zp1h, mm_read_zp2, mm_read_zp2l, mm_read_zp2h
 .export mm_store_zp1, mm_store_zp1l, mm_store_zp1h, mm_store_zp2, mm_store_zp2l, mm_store_zp2h
 
@@ -804,7 +804,6 @@ zp1:	sta	($42),y
 	STA_OFS	_stay_zp1l2
 	STA_OFS	_stay_zp1l3
 	STA_OFS	_cpy_zp1l0
-	STA_OFS	_cpy_zp1l1
 	; Switch to high-byte of ZP1
 	inc
 	STA_OFS	_isr_zp1h0
@@ -812,7 +811,6 @@ zp1:	sta	($42),y
 	STA_OFS	_cpy_zp1h0
 	pla		; Get low-byte of ZP2
 	STA_OFS	_cpy_zp2l0
-	STA_OFS	_cpy_zp2l1
 	; Switch to high-byte of ZP2
 	inc
 	STA_OFS	_cpy_zp2h0
@@ -1305,17 +1303,15 @@ _lda_bank:
 	lda	($42),y
 _lda_zp1l0=*-_low_scratch-1
 	rts
-:	phx			; Preserve bank
+:	phx			; Preserve .X
 	lda	X16_RAMBank_Reg	; Save current RAM bank
 	stx	X16_RAMBank_Reg	; Set new RAM bank
-	tax			; Move original RAM bank to X
+	pha			; Save original RAM bank
 	lda	($42),y		; Load value from address pointed to by ZP pointer
 _lda_zp1l1=*-_low_scratch-1
-	pha
-	lda	X16_RAMBank_Reg
-	stx	X16_RAMBank_Reg	; Restore original RAM bank
-	tax			; Restore calling RAM bank to .X
-	pla			; Restore read value from stack
+	plx			; Restore and set original RAM bank
+	stx	X16_RAMBank_Reg
+	plx			; Restore .X
 	rts
 
 ;*****************************************************************************
@@ -1341,9 +1337,10 @@ _lday_zp1l1=*-_low_scratch-1
 	tay
 	pla
 	rts
-:	lda	X16_RAMBank_Reg	; Save original RAM bank
+:	phx			; Save .X
+	lda	X16_RAMBank_Reg	; Save original RAM bank
+	pha
 	stx	X16_RAMBank_Reg	; Switch RAM bank
-	tax			; Original RAM bank in .X
 	lda	($42),y		; Read low-byte
 _lday_zp1l2=*-_low_scratch-1
 	pha			; Save low-byte on stack
@@ -1351,10 +1348,10 @@ _lday_zp1l2=*-_low_scratch-1
 	lda	($42),y		; Read high-byte
 _lday_zp1l3=*-_low_scratch-1
 	tay			; Move high-byte to .Y
-	lda	X16_RAMBank_Reg
-	stx	X16_RAMBank_Reg	; Restore original RAM bank
-	tax			; Restore calling RAM bank to .X
-	pla			; Pull low-byte from stack
+	pla			; Restore low-byte
+	plx			; Restore original RAM bank
+	stx	X16_RAMBank_Reg
+	plx			; Restore .X
 	rts
 
 ;*****************************************************************************
@@ -1423,7 +1420,7 @@ _sta_bank:
 _sta_zp1l0=*-_low_scratch-1
 	rts
 :	phx			; Preserve .X 
-	pha			; Preserve values to write
+	pha			; Preserve value to write
 	lda	X16_RAMBank_Reg	; Save current RAM bank
 	stx	X16_RAMBank_Reg	; Set new RAM bank
 	tax			; Move original RAM bank to .X
@@ -1495,44 +1492,41 @@ _bank_cpy:
 	ldy	X16_RAMBank_Reg
 	phy
 	ldy	#0
-	; Set source bank
+	; Set source RAM bank
 	sta	X16_RAMBank_Reg
-loop:	cpx	X16_RAMBank_Reg
-	bne	:+
+	; Read source RAM bank and save it on stack
+bcloop:	lda	X16_RAMBank_Reg
+	pha
+	; Read from source bank
 	lda	($42),y
 _cpy_zp1l0=*-_low_scratch-1
-	sta	($44),y
-_cpy_zp2l0=*-_low_scratch-1
-	bra	cont
-:	pha
-	; Read byte and save on stack
-	lda	($42),y
-_cpy_zp1l1=*-_low_scratch-1
+	; Write to destination bank
 	stx	X16_RAMBank_Reg
 	sta	($44),y
-_cpy_zp2l1=*-_low_scratch-1
-	; Read source bank from stack and set it
+_cpy_zp2l0=*-_low_scratch-1
+	; Restore source RAM bank
 	pla
 	sta	X16_RAMBank_Reg
-cont:	iny
-	bne	:+
-	inc	42+1
-_cpy_zp1h0=*-_low_scratch-1
-	inc	44+1
-_cpy_zp2h0=*-_low_scratch-1
-:	; Decrement counter
+	; Decrement 16 bit counter
 lsl0:	lda	_low_scratch+0
-	bne	:+
+	bne	lsl1
 lsh0:	dec	_low_scratch+1
-:
 lsl1:	dec	_low_scratch+0
-	; Check if we have reached 0
 	dec
 lsh1:	ora	_low_scratch+1
-	bne	loop
-	ply
+	beq	bcdone
+	; Increment Y and possibly
+	iny
+	bne	bcloop
+	inc	$42+1
+_cpy_zp1h0=*-_low_scratch-1
+	inc	$44+1
+_cpy_zp2h0=*-_low_scratch-1
+	bra	bcloop
+bcdone:	ply
 	sty	X16_RAMBank_Reg
 	rts
+
 
 _end_lowram:
 
