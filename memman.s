@@ -655,19 +655,27 @@ zp0:	lda	$42
 	sta	lowram_addr
 	sta	lsl0+1		; low-ram scratch address low-byte
 	sta	lsl1+1
+	sta	lsl2+1
+	sta	lsl3+1
 zp1:	lda	$42+1
 	sta	lowram_addr+1
 	sta	lsl0+2
 	sta	lsl1+2
+	sta	lsl2+2
+	sta	lsl3+2
 	lda	lowram_addr
 	inc
 	sta	lsh0+1
 	sta	lsh1+1
+	sta	lsh2+1
+	sta	lsh3+1
 	lda	lowram_addr+1
 	bcc	:+
 	inc
 :	sta	lsh0+2
 	sta	lsh1+2
+	sta	lsh2+2
+	sta	lsh3+2
 
 	; Copy routines to lowram
 	ldy	#(_end_lowram-_low_scratch-1)	; Size of lowram segment
@@ -1494,6 +1502,18 @@ _bank_cpy:
 	ldy	#0
 	; Set source RAM bank
 	sta	X16_RAMBank_Reg
+
+	; Invert counter
+lsl0:	lda	_low_scratch+0
+	eor	#$FF
+lsl1:	sta	_low_scratch+0
+lsh0:	lda	_low_scratch+1
+	eor	#$FF
+lsh1:	sta	_low_scratch+1
+lsl2:	inc	_low_scratch+0
+	bne	bcloop
+lsh2:	inc	_low_scratch+1
+
 	; Read source RAM bank and save it on stack
 bcloop:	lda	X16_RAMBank_Reg
 	pha
@@ -1508,13 +1528,11 @@ _cpy_zp2l0=*-_low_scratch-1
 	pla
 	sta	X16_RAMBank_Reg
 	; Decrement 16 bit counter
-lsl0:	lda	_low_scratch+0
-	bne	lsl1
-lsh0:	dec	_low_scratch+1
-lsl1:	dec	_low_scratch+0
-	dec
-lsh1:	ora	_low_scratch+1
+lsl3:	inc	_low_scratch+0
+	bne	bccontinue
+lsh3:	inc	_low_scratch+1
 	beq	bcdone
+bccontinue:
 	; Increment Y and possibly
 	iny
 	bne	bcloop
