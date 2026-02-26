@@ -1527,7 +1527,7 @@ _cpy_zp2l0=*-_low_scratch-1
 	; Restore source RAM bank
 	pla
 	sta	X16_RAMBank_Reg
-	; Decrement 16 bit counter
+	; Increment inverted 16 bit counter
 lsl3:	inc	_low_scratch+0
 	bne	bccontinue
 lsh3:	inc	_low_scratch+1
