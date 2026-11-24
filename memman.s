@@ -160,6 +160,7 @@ end:	clc
 	jsr	mm_get_ptr
 	bcc	:+
 	ply			; Cleanup stack
+	ply
 	sec
 	rts
 	; Get the real pointer from zp1
