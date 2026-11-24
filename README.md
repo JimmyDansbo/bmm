@@ -218,7 +218,7 @@ This function can be called in a different way to look for dirty memory areas in
 |-------|---------|
 | A | Set to 0 to look for dirty memory |
 | X | RAM bank |
-| Y | 0 if searching from beginning of RAM bank |
+| Y | non-zero if searching from beginning of RAM bank |
 
 In any case, the output of the function is the same.
 
