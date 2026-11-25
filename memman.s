@@ -536,7 +536,7 @@ nodirty:; Check if available space is larger than requested space
 
 ;*****************************************************************************
 ; Updates the ISR in lowram with the correct bank and address of the actual
-; ISR, then installs the lowram ISR and e; sta (zp1)nsures it calls the original ISR
+; ISR, then installs the lowram ISR and ensures it calls the original ISR
 ;=============================================================================
 ; Input:	.A & .Y = low- and high-byte of banked ISR
 ;		.X = bank of ISR
@@ -1512,8 +1512,14 @@ _stay_zp1l3=*-_low_scratch-1
 ; Uses:		.A, .Y, ZP pointers & two first bytes of low-ram
 ;*****************************************************************************
 _bank_cpy:
+	; Exit if number of bytes to copy = 0
+	ldy	_low_scratch+0
+	bne	:+
+	ldy	_low_scratch+1
+	bne	:+
+	rts
 	; Save current RAM bank
-	ldy	X16_RAMBank_Reg
+:	ldy	X16_RAMBank_Reg
 	phy
 	ldy	#0
 	; Set source RAM bank
