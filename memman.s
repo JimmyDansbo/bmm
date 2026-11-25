@@ -126,14 +126,13 @@ bank_cpy:
 	ldy	scratch+3
 	jsr	mm_store_zp1
 	; Save destination pointer so it can be used to update headers later
-	lda	scratch+0
-	sta	scratch+2
-	lda	scratch+1
-	sta	scratch+3
+	jsr	mm_read_zp2
+	pha
+	phy
 	txa			; Set source- & destination ram bank to the same
 	jsr	bank_cpy
-	lda	scratch+2
-	ldy	scratch+3
+	ply
+	pla
 	jsr	mm_store_zp2
 last_element:
 	; Write 0s to last address to show it is the last
@@ -214,8 +213,14 @@ end:	clc
 	lda	scratch+2
 	ldy	scratch+3
 	jsr	mm_store_zp1
+	jsr	mm_read_zp2	; Save zp2 on stack as bank_cpy may overwrite it
+	pha
+	phy
 	txa			; Set source- & destination ram bank to the same
 	jsr	bank_cpy
+	ply
+	pla
+	jsr	mm_store_zp2
 end:	; Write 0s to last address to show it is the last
 	jsr	zero_last_free
 	; Update headers of copied memory blocks by subtracting the freed memory
@@ -445,6 +450,7 @@ dirtyloop:
 	jsr	lda_bank
 	tay			; Combine with bank for handle_id
 	txa
+	clc			; Ensure function returns without error
 	rts
 nodirty:; Check if available space is larger than requested space
 	jsr	mm_remaining	; Remaining space in .A/.Y
