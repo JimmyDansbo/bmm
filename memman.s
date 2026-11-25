@@ -1127,7 +1127,7 @@ shift_done:
 ; Preserves:	All except .A
 ;*****************************************************************************
 .proc mm_read_zp1h: near
-	lda	$42+0
+	lda	$42+1
 	rts
 .endproc
 
@@ -1167,7 +1167,7 @@ shift_done:
 ; Preserves:	All except .A
 ;*****************************************************************************
 .proc mm_read_zp2h: near
-	lda	$42+0
+	lda	$42+1
 	rts
 .endproc
 
