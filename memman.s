@@ -125,8 +125,16 @@ bank_cpy:
 	lda	scratch+2
 	ldy	scratch+3
 	jsr	mm_store_zp1
+	; Save destination pointer so it can be used to update headers later
+	lda	scratch+0
+	sta	scratch+2
+	lda	scratch+1
+	sta	scratch+3
 	txa			; Set source- & destination ram bank to the same
 	jsr	bank_cpy
+	lda	scratch+2
+	ldy	scratch+3
+	jsr	mm_store_zp2
 last_element:
 	; Write 0s to last address to show it is the last
 	jsr	zero_last_free
@@ -968,6 +976,7 @@ shift_done:
 	jsr	sta_bank
 	pla			; Restore scratch+5
 	sta	scratch+5
+	rts
 .endproc
 
 ;*****************************************************************************
